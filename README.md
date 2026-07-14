@@ -18,9 +18,12 @@
 若要手动将项目部署到 Cloudflare，请遵循以下流程：
 
 1. 确保已根据您的环境修改 wrangler.toml 文件中的配置。  
-2. 执行远程数据库迁移：  
+2. 把.dev.vars文件中的配置部署到worker上，输入命令后回车，然后输入真正的值。   
+   `wrangler secret put USER_PSWD --name <worker_name>`  
+   `wrangler secret put AES_KEY --name <worker_name>`
+3. 执行远程数据库迁移：  
    `wrangler d1 execute <database_name> --remote --file=schema.sql`  
-3. 部署代码：  
+4. 部署代码：  
    `wrangler deploy`
 
 ## **自动化部署 (GitHub Actions)**
@@ -32,17 +35,18 @@
 在 GitHub 仓库中，进入 **Settings \> Secrets and variables \> Actions**，添加以下 Secret：
 
 * CF\_TOKEN: 您的 Cloudflare API Token（需具备 Workers 和 D1 编辑权限）。
+* USER\_PSWD: 用户密码配置。
+* AES\_KEY: 密码读取写入数据库，解密加密的KEY，任意字符串。
 
 ### **2\. 配置 Variables**
 
 在 GitHub 仓库中，进入 **Settings \> Secrets and variables \> Actions**，切换到 **Variables** 标签页，添加以下变量：
 
 * WORKER\_NAME: Cloudflare Worker 的名称。  
-* USER\_NAME: 用户名配置。  
-* USER\_PSWD: 用户密码配置。  
+* USER\_NAME: 用户名配置。    
 * TIME\_ZONE: 时区设置。  
-* AES\_KEY: 密码写入数据库加密KEY。  
 * DB\_NAME: D1 数据库名称。  
 * DB\_ID: D1 数据库 ID。
+* WORKER\_DOMAIN: 自定义网址，可选参数。
 
 配置完成后，通过GitHub Actions 手动部署。

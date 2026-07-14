@@ -21,17 +21,45 @@ jobs:
         run: npm install
         
       - name: Create wrangler.toml with vars
+        env:
+          WORKER_DOMAIN: ${{ vars.WORKER_DOMAIN }}
         run: |
+          # 1. 先写入通用的基础配置
           cat << EOF > wrangler.toml
           name = "${{ vars.WORKER_NAME }}"
           main = "src/index.ts"
           compatibility_date = "2024-01-01"
           
+          EOF
+
+          # 2. 动态判断 WORKER_DOMAIN 是否配置，并追加对应的路由控制指令
+          if [ -n "$WORKER_DOMAIN" ]; then
+            echo "检测到配置了 WORKER_DOMAIN，启用自定义域名并关闭 workers.dev"
+            cat << EOF >> wrangler.toml
+          workers_dev = false
+          preview_urls = false
+
+          [[routes]]
+          pattern = "$WORKER_DOMAIN"
+          custom_domain = true
+          EOF
+          else
+            echo "未检测到 WORKER_DOMAIN，启用默认的 workers.dev 和 preview_urls"
+            cat << EOF >> wrangler.toml
+          workers_dev = true
+          preview_urls = true
+          EOF
+          fi
+
+          # 3. 追加剩余的公开环境变量和 D1 数据库绑定
+          cat << EOF >> wrangler.toml
+
+          [assets]
+          directory = "static"
+
           [vars]
           USER_NAME = "${{ vars.USER_NAME }}"
-          USER_PSWD = "${{ vars.USER_PSWD }}"
           TIME_ZONE = "${{ vars.TIME_ZONE }}"
-          AES_KEY = "${{ vars.AES_KEY }}"
           
           [[d1_databases]]
           binding = "DB"
@@ -45,8 +73,14 @@ jobs:
           apiToken: ${{ secrets.CF_TOKEN }}
           command: d1 execute ${{ vars.DB_NAME }} --remote --file=schema.sql
 
-      - name: Deploy to Cloudflare Workers
+      - name: Deploy Worker & Set Secrets
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_TOKEN }}
+          secrets: |
+            USER_PSWD
+            AES_KEY
           command: deploy
+        env:
+          USER_PSWD: ${{ secrets.USER_PSWD }}
+          AES_KEY: ${{ secrets.AES_KEY }}

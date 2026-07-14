@@ -6,6 +6,15 @@ import * as tpl from './templates';
 
 const app = new Hono<{ Bindings: Env }>();
 
+// 1. 最先：静态资源处理（最高优先级）
+app.use('*', async (c, next) => {
+  const response = await c.env.ASSETS?.fetch(c.req.raw)
+  if (response && response.status !== 404) {
+    return response
+  }
+  await next()
+})
+
 const authMiddleware = async (c: any, next: any) => {
   const session = getCookie(c, 'admin_session');
   if (session === `${c.env.USER_NAME}_authenticated`) {
