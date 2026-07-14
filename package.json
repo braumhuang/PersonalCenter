@@ -1,0 +1,17 @@
+{
+  "name": "personal-center",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.12.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260000.0",
+    "typescript": "^7.0.0",
+    "wrangler": "^4.100.0"
+  }
+}

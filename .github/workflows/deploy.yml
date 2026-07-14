@@ -1,0 +1,52 @@
+name: Deploy Worker
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          
+      - name: Install Dependencies
+        run: npm install
+        
+      - name: Create wrangler.toml with vars
+        run: |
+          cat << EOF > wrangler.toml
+          name = "${{ vars.WORKER_NAME }}"
+          main = "src/index.ts"
+          compatibility_date = "2024-01-01"
+          
+          [vars]
+          USER_NAME = "${{ vars.USER_NAME }}"
+          USER_PSWD = "${{ vars.USER_PSWD }}"
+          TIME_ZONE = "${{ vars.TIME_ZONE }}"
+          AES_KEY = "${{ vars.AES_KEY }}"
+          
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "${{ vars.DB_NAME }}"
+          database_id = "${{ vars.DB_ID }}"
+          EOF
+
+      - name: Run D1 Migrations
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_TOKEN }}
+          command: d1 execute ${{ vars.DB_NAME }} --remote --file=schema.sql
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_TOKEN }}
+          command: deploy

@@ -1,0 +1,15 @@
+name = "personal-center"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+# 本地运行环境预设值（可在此处安全覆写调试，线上将通过 GitHub Action Variables 注入）
+USER_NAME = "Admin"
+USER_PSWD = "123456"
+TIME_ZONE = "Asia/Shanghai"
+AES_KEY = "your-custom-32-character-secret-key"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "personal-center-db"
+database_id = "local-db"
