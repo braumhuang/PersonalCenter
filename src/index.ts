@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import { createCookie, verifyCookie, deleteCookieRecord } from './auth';
 import { Env, PasswordModel, BookmarkModel, NotebookModel, TodoitemModel } from './types';
 import { encryptPswd, decryptPswd, getZoneTimeStr } from './utils';
 import * as tpl from './templates';
@@ -17,7 +18,9 @@ app.use('*', async (c, next) => {
 
 const authMiddleware = async (c: any, next: any) => {
   const session = getCookie(c, 'admin_session');
-  if (session === `${c.env.USER_NAME}_authenticated`) {
+  // 调用动态校验函数
+  const isValid = await verifyCookie(c.env.DB, session);
+  if (isValid) {
     await next();
   } else {
     if (c.req.path.startsWith('/admin')) {
@@ -48,13 +51,20 @@ app.get('/', async (c) => {
 app.post('/admin/login', async (c) => {
   const body = await c.req.parseBody();
   if (body.username === c.env.USER_NAME && body.password === c.env.USER_PSWD) {
-    setCookie(c, 'admin_session', `${c.env.USER_NAME}_authenticated`, { maxAge: 86400, path: '/' });
+    // 生成动态安全的 cookie ID
+    const sessionToken = await createCookie(c.env.DB);
+    // 浏览器端的 maxAge 也可以设为 10 天（864000 秒），保持一致
+    setCookie(c, 'admin_session', sessionToken, { maxAge: 864000, path: '/', httpOnly: true, sameSite: 'Strict' });
     return c.redirect('/admin');
   }
   return c.html(tpl.loginPage('无效的平台管理凭证，请重试'));
 });
 
-app.get('/admin/logout', (c) => {
+app.get('/admin/logout', async (c) => {
+  const session = getCookie(c, 'admin_session');
+  // 数据库中删除
+  await deleteCookieRecord(c.env.DB, session);
+  // 浏览器端删除
   deleteCookie(c, 'admin_session', { path: '/' });
   return c.redirect('/');
 });

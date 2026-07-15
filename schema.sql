@@ -1,3 +1,8 @@
+CREATE TABLE IF NOT EXISTS cookie (
+    id TEXT PRIMARY KEY,
+    et INTEGER NOT NULL  -- 存储 Unix 时间戳（秒或毫秒），便于判断过期
+);
+
 -- 密码资产模型
 CREATE TABLE IF NOT EXISTS password (
     note TEXT PRIMARY KEY,
