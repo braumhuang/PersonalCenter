@@ -4,6 +4,13 @@ import { createCookie, verifyCookie, deleteCookieRecord } from './auth';
 import { Env, PasswordModel, BookmarkModel, NotebookModel, TodoitemModel } from './types';
 import { encryptPswd, decryptPswd, getZoneTimeStr } from './utils';
 import * as tpl from './templates';
+import {
+  BACKUP_FORMAT,
+  BACKUP_VERSION,
+  MAX_BACKUP_FILE_SIZE,
+  PersonalCenterBackup,
+  validateBackup,
+} from './data-transfer';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -70,6 +77,172 @@ app.get('/admin/logout', async (c) => {
 });
 
 app.get('/admin', (c) => c.html(tpl.dashboardPage(c.env.USER_NAME)));
+
+/* 网站数据统一导出 / 导入 */
+app.get('/admin/data/export', async (c) => {
+  const [passwordRes, bookmarkRes, notebookRes, todoRes] = await Promise.all([
+    c.env.DB.prepare("SELECT * FROM password ORDER BY note ASC").all<PasswordModel>(),
+    c.env.DB.prepare("SELECT * FROM bookmark ORDER BY id ASC").all<BookmarkModel>(),
+    c.env.DB.prepare("SELECT * FROM notebook ORDER BY id ASC").all<NotebookModel>(),
+    c.env.DB.prepare("SELECT * FROM todoitem ORDER BY id ASC").all<TodoitemModel>(),
+  ]);
+
+  const passwords = await Promise.all((passwordRes.results || []).map(async (row) => ({
+    note: row.note,
+    name: row.name,
+    password: await decryptPswd(row.pswd, c.env.AES_KEY),
+    urls: row.urls,
+    info: row.info || '',
+  })));
+
+  const backup: PersonalCenterBackup = {
+    format: BACKUP_FORMAT,
+    version: BACKUP_VERSION,
+    exported_at: new Date().toISOString(),
+    data: {
+      passwords,
+      bookmarks: (bookmarkRes.results || []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        url: row.url,
+        show: row.show === 1,
+      })),
+      notebooks: (notebookRes.results || []).map((row) => ({
+        id: row.id,
+        title: row.title,
+        content: row.content,
+        create_time: row.create_time,
+      })),
+      todos: (todoRes.results || []).map((row) => ({
+        id: row.id,
+        title: row.title,
+        content: row.content,
+        todo_time: row.todo_time,
+        done: row.done === 1,
+      })),
+    },
+  };
+
+  const filenameTime = getZoneTimeStr(c.env.TIME_ZONE).replace(/[-: ]/g, '').slice(0, 14);
+  return new Response(JSON.stringify(backup, null, 2), {
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="personal-center-backup-${filenameTime}.json"`,
+      'Cache-Control': 'no-store',
+    },
+  });
+});
+
+app.post('/admin/data/import', async (c) => {
+  try {
+    const body = await c.req.parseBody();
+    const file = body.data_file;
+
+    if (!(file instanceof File)) {
+      return c.json({ success: false, message: '请选择要导入的 JSON 文件。' }, 400);
+    }
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      return c.json({ success: false, message: '文件扩展名必须是 .json。' }, 400);
+    }
+    if (file.size <= 0) {
+      return c.json({ success: false, message: '导入文件不能为空。' }, 400);
+    }
+    if (file.size > MAX_BACKUP_FILE_SIZE) {
+      return c.json({ success: false, message: '导入文件不能超过 20 MB。' }, 400);
+    }
+
+    let rawData: unknown;
+    try {
+      const text = (await file.text()).replace(/^\uFEFF/, '');
+      rawData = JSON.parse(text);
+    } catch {
+      return c.json({ success: false, message: 'JSON 解析失败，请确认文件内容完整且语法正确。' }, 400);
+    }
+
+    const validation = validateBackup(rawData);
+    if (!validation.ok) {
+      return c.json({
+        success: false,
+        message: '备份文件格式校验失败。',
+        errors: validation.errors,
+      }, 400);
+    }
+
+    const { passwords, bookmarks, notebooks, todos } = validation.backup.data;
+    const statements: D1PreparedStatement[] = [];
+
+    for (const row of passwords) {
+      const encryptedPassword = await encryptPswd(row.password, c.env.AES_KEY);
+      statements.push(c.env.DB.prepare(`
+        INSERT INTO password (note, name, pswd, urls, info)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(note) DO UPDATE SET
+          name = excluded.name,
+          pswd = excluded.pswd,
+          urls = excluded.urls,
+          info = excluded.info
+      `).bind(row.note, row.name, encryptedPassword, row.urls, row.info));
+    }
+
+    for (const row of bookmarks) {
+      statements.push(c.env.DB.prepare(`
+        INSERT INTO bookmark (id, name, url, show)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          url = excluded.url,
+          show = excluded.show
+      `).bind(row.id, row.name, row.url, row.show ? 1 : 0));
+    }
+
+    for (const row of notebooks) {
+      statements.push(c.env.DB.prepare(`
+        INSERT INTO notebook (id, title, content, create_time)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          title = excluded.title,
+          content = excluded.content,
+          create_time = excluded.create_time
+      `).bind(row.id, row.title, row.content, row.create_time));
+    }
+
+    for (const row of todos) {
+      statements.push(c.env.DB.prepare(`
+        INSERT INTO todoitem (id, title, content, todo_time, done)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          title = excluded.title,
+          content = excluded.content,
+          todo_time = excluded.todo_time,
+          done = excluded.done
+      `).bind(row.id, row.title, row.content, row.todo_time, row.done ? 1 : 0));
+    }
+
+    // 控制单次 D1 batch 的规模；所有内容已在写入前完成格式校验。
+    const batchSize = 100;
+    for (let index = 0; index < statements.length; index += batchSize) {
+      await c.env.DB.batch(statements.slice(index, index + batchSize));
+    }
+
+    const total = passwords.length + bookmarks.length + notebooks.length + todos.length;
+    return c.json({
+      success: true,
+      message: `导入完成，共更新或新增 ${total} 条记录。`,
+      counts: {
+        passwords: passwords.length,
+        bookmarks: bookmarks.length,
+        notebooks: notebooks.length,
+        todos: todos.length,
+      },
+    });
+  } catch (error) {
+    console.error('Import personal center backup failed:', error);
+    return c.json({
+      success: false,
+      message: '导入过程中发生数据库错误。由于数据采用分批写入，部分记录可能已更新；修复问题后可安全重试同一文件。',
+    }, 500);
+  }
+});
 
 /* 1. PASSWORD (密码模块) */
 app.get('/admin/password', async (c) => {

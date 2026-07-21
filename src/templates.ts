@@ -4,7 +4,21 @@ const DjangoCSS = `
   header#header { background: var(--primary); color: #fff; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
   header#header a { color: #fff; text-decoration: none; }
   header#header .branding h1 { margin: 0; font-size: 20px; font-weight: 300; }
-  #user-tools { font-size: 12px; }
+  #user-tools { font-size: 12px; position: relative; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+  .user-menu-wrap { position: relative; display: inline-block; }
+  .user-menu-toggle { appearance: none; border: 0; background: transparent; color: #fff; padding: 2px 4px; cursor: pointer; font: inherit; border-radius: 3px; }
+  .user-menu-toggle:hover, .user-menu-toggle:focus { background: rgba(255,255,255,0.15); outline: none; }
+  .user-dropdown { position: absolute; right: 0; top: calc(100% + 7px); min-width: 120px; background: #fff; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 4px 14px rgba(0,0,0,0.18); z-index: 1000; overflow: hidden; }
+  .user-dropdown[hidden] { display: none; }
+  .user-dropdown a, .user-dropdown button { display: block; width: 100%; box-sizing: border-box; border: 0; background: #fff; color: #333 !important; padding: 9px 14px; text-align: left; font: inherit; cursor: pointer; text-decoration: none; }
+  .user-dropdown a:hover, .user-dropdown button:hover { background: #f2f5f7; }
+  .data-modal { position: fixed; inset: 0; z-index: 3000; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,0.42); }
+  .data-modal[hidden] { display: none; }
+  .data-modal-card { width: min(520px, 100%); max-height: 80vh; overflow: auto; background: #fff; border-radius: 6px; box-shadow: 0 12px 36px rgba(0,0,0,0.3); }
+  .data-modal-title { margin: 0; padding: 14px 18px; background: var(--primary); color: #fff; font-size: 15px; }
+  .data-modal-title.error { background: #ba2121; }
+  .data-modal-message { margin: 0; padding: 20px 18px; white-space: pre-wrap; line-height: 1.7; word-break: break-word; }
+  .data-modal-actions { padding: 12px 18px; background: #f8f8f8; text-align: right; border-top: 1px solid #eee; }
   #breadcrumbs { background: #fff; padding: 8px 20px; border-bottom: 1px solid #ccc; font-size: 12px; color: #666; }
   #breadcrumbs a { color: #447e9b; text-decoration: none; }
   #main-container { display: flex; padding: 20px; gap: 20px; max-width: 1200px; margin: 0 auto; flex-wrap: wrap; }
@@ -63,13 +77,132 @@ export function baseLayout(title: string, content: string, user: string | null =
             <h1><a href="/admin">后台管理</a></h1>
         </div>
         <div id="user-tools">
-            欢迎，<strong>${user || '管理员'}</strong>。
-            <a href="/" target="_blank">前台首页</a> / 
+            <span>欢迎，</span>
+            <span class="user-menu-wrap">
+                <button type="button" id="user-menu-toggle" class="user-menu-toggle" aria-haspopup="true" aria-expanded="false"><strong>${user || '管理员'}</strong></button>
+                <span>。</span>
+                <span id="user-dropdown" class="user-dropdown" hidden>
+                    <button type="button" id="data-import-trigger">导入数据</button>
+                    <a href="/admin/data/export">导出数据</a>
+                </span>
+            </span>
+            <a href="/" target="_blank">前台首页</a> /
             <a href="/admin/logout">注销</a>
         </div>
     </header>
+    <input type="file" id="data-import-file" name="data_file" accept=".json,application/json" hidden>
+    <div id="data-modal" class="data-modal" hidden role="dialog" aria-modal="true" aria-labelledby="data-modal-title">
+        <div class="data-modal-card">
+            <h2 id="data-modal-title" class="data-modal-title">提示</h2>
+            <p id="data-modal-message" class="data-modal-message"></p>
+            <div class="data-modal-actions">
+                <button type="button" id="data-modal-close" class="btn">确定</button>
+            </div>
+        </div>
+    </div>
     ` : ''}
     ${content}
+    ${!hideNav ? `
+    <script>
+    (() => {
+        const toggle = document.getElementById('user-menu-toggle');
+        const dropdown = document.getElementById('user-dropdown');
+        const importTrigger = document.getElementById('data-import-trigger');
+        const fileInput = document.getElementById('data-import-file');
+        const modal = document.getElementById('data-modal');
+        const modalTitle = document.getElementById('data-modal-title');
+        const modalMessage = document.getElementById('data-modal-message');
+        const modalClose = document.getElementById('data-modal-close');
+        let reloadAfterClose = false;
+
+        const closeDropdown = () => {
+            dropdown.hidden = true;
+            toggle.setAttribute('aria-expanded', 'false');
+        };
+
+        const showModal = (title, message, isError = false, canClose = true) => {
+            modalTitle.textContent = title;
+            modalTitle.classList.toggle('error', isError);
+            modalMessage.textContent = message;
+            modalClose.hidden = !canClose;
+            modal.hidden = false;
+        };
+
+        const closeModal = () => {
+            modal.hidden = true;
+            if (reloadAfterClose) window.location.reload();
+        };
+
+        toggle.addEventListener('click', (event) => {
+            event.stopPropagation();
+            dropdown.hidden = !dropdown.hidden;
+            toggle.setAttribute('aria-expanded', dropdown.hidden ? 'false' : 'true');
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!dropdown.hidden && !dropdown.contains(event.target) && event.target !== toggle) {
+                closeDropdown();
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closeDropdown();
+                if (!modal.hidden && !modalClose.hidden) closeModal();
+            }
+        });
+
+        importTrigger.addEventListener('click', () => {
+            closeDropdown();
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', async () => {
+            const file = fileInput.files && fileInput.files[0];
+            if (!file) return;
+
+            showModal('正在导入', '正在校验备份文件并更新数据……', false, false);
+            const formData = new FormData();
+            formData.append('data_file', file);
+
+            try {
+                const response = await fetch('/admin/data/import', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'same-origin'
+                });
+                const result = await response.json().catch(() => ({
+                    success: false,
+                    message: '服务器返回了无法识别的响应。'
+                }));
+
+                const errorDetails = Array.isArray(result.errors) && result.errors.length > 0
+                    ? '\\n\\n' + result.errors.map((item, index) => (index + 1) + '. ' + item).join('\\n')
+                    : '';
+
+                if (!response.ok || !result.success) {
+                    reloadAfterClose = false;
+                    showModal('导入失败', (result.message || '导入失败。') + errorDetails, true, true);
+                    return;
+                }
+
+                reloadAfterClose = true;
+                showModal('导入成功', result.message || '数据已成功导入。', false, true);
+            } catch (error) {
+                reloadAfterClose = false;
+                showModal('导入失败', '网络请求失败，请检查网络后重试。', true, true);
+            } finally {
+                fileInput.value = '';
+            }
+        });
+
+        modalClose.addEventListener('click', closeModal);
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal && !modalClose.hidden) closeModal();
+        });
+    })();
+    </script>
+    ` : ''}
 </body>
 </html>`;
 }

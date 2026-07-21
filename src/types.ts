@@ -1,5 +1,6 @@
 export interface Env {
   DB: D1Database;
+  ASSETS?: Fetcher;
   USER_NAME: string;
   USER_PSWD: string;
   TIME_ZONE: string;
