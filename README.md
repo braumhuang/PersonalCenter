@@ -51,6 +51,34 @@
 
 配置完成后，通过GitHub Actions 手动部署。
 
+
+## **项目结构**
+
+界面使用 Hono JSX 组件拆分，业务代码按照功能模块组织：
+
+```text
+src/
+├── components/              # 公共布局、列表页和表单页
+├── modules/
+│   ├── password/            # 密码业务、页面和备份适配
+│   ├── bookmark/            # 书签业务、页面和备份适配
+│   ├── notebook/            # 笔记业务、页面和备份适配
+│   ├── todoitem/            # 待办业务、页面和备份适配
+│   └── website/             # 登录、会话、首页、后台首页、统一导入导出
+├── index.ts                 # Worker 入口与模块注册
+├── types.ts                 # Worker 环境类型
+└── utils.ts                 # 加解密与时间工具
+static/
+├── css/admin.css            # 页面样式
+├── js/admin.js              # 后台菜单、列表、导入及确认交互
+├── js/home.js               # 首页待办交互
+└── favicon.ico              # 网站图标
+```
+
+此次重构只调整代码组织方式，不改变数据库结构、页面样式或原有业务行为。CSS 和 JavaScript 均通过 `static` 目录提供。
+
+手机屏幕（宽度不超过 768px）下，首页 `.safari-grid` 使用 `repeat(auto-fill, minmax(50px, 1fr))`。
+
 ## **网站数据导入与导出**
 
 登录后台后，点击右上角“欢迎，用户名。”中的用户名，可打开以下菜单：
@@ -76,7 +104,7 @@
     "passwords": [],
     "bookmarks": [],
     "notebooks": [],
-    "todos": []
+    "todoitems": []
   }
 }
 ```

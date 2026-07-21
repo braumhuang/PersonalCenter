@@ -1,47 +1,22 @@
+import type { PasswordBackupItem } from '../password/types';
+import type { BookmarkBackupItem } from '../bookmark/types';
+import type { NotebookBackupItem } from '../notebook/types';
+import type { TodoitemBackupItem } from '../todoitem/types';
+
 export const BACKUP_FORMAT = 'personal-center-backup';
 export const BACKUP_VERSION = 1;
 export const MAX_BACKUP_FILE_SIZE = 20 * 1024 * 1024;
 export const MAX_RECORDS_PER_MODULE = 100_000;
-
-export interface BackupPassword {
-  note: string;
-  name: string;
-  password: string;
-  urls: string;
-  info: string;
-}
-
-export interface BackupBookmark {
-  id: number;
-  name: string;
-  url: string;
-  show: boolean;
-}
-
-export interface BackupNotebook {
-  id: number;
-  title: string;
-  content: string;
-  create_time: string;
-}
-
-export interface BackupTodo {
-  id: number;
-  title: string;
-  content: string;
-  todo_time: string;
-  done: boolean;
-}
 
 export interface PersonalCenterBackup {
   format: typeof BACKUP_FORMAT;
   version: typeof BACKUP_VERSION;
   exported_at: string;
   data: {
-    passwords: BackupPassword[];
-    bookmarks: BackupBookmark[];
-    notebooks: BackupNotebook[];
-    todos: BackupTodo[];
+    passwords: PasswordBackupItem[];
+    bookmarks: BookmarkBackupItem[];
+    notebooks: NotebookBackupItem[];
+    todoitems: TodoitemBackupItem[];
   };
 }
 
@@ -143,9 +118,9 @@ export function validateBackup(value: unknown): BackupValidationResult {
   const passwordValues = readArray(value.data.passwords, 'data.passwords', errors);
   const bookmarkValues = readArray(value.data.bookmarks, 'data.bookmarks', errors);
   const notebookValues = readArray(value.data.notebooks, 'data.notebooks', errors);
-  const todoValues = readArray(value.data.todos, 'data.todos', errors);
+  const todoitemValues = readArray(value.data.todoitems, 'data.todoitems', errors);
 
-  const passwords: BackupPassword[] = passwordValues.map((item, index) => {
+  const passwords: PasswordBackupItem[] = passwordValues.map((item, index) => {
     const path = `data.passwords[${index}]`;
     if (!isObject(item)) {
       errors.push(`${path} 必须是对象`);
@@ -160,7 +135,7 @@ export function validateBackup(value: unknown): BackupValidationResult {
     };
   });
 
-  const bookmarks: BackupBookmark[] = bookmarkValues.map((item, index) => {
+  const bookmarks: BookmarkBackupItem[] = bookmarkValues.map((item, index) => {
     const path = `data.bookmarks[${index}]`;
     if (!isObject(item)) {
       errors.push(`${path} 必须是对象`);
@@ -174,7 +149,7 @@ export function validateBackup(value: unknown): BackupValidationResult {
     };
   });
 
-  const notebooks: BackupNotebook[] = notebookValues.map((item, index) => {
+  const notebooks: NotebookBackupItem[] = notebookValues.map((item, index) => {
     const path = `data.notebooks[${index}]`;
     if (!isObject(item)) {
       errors.push(`${path} 必须是对象`);
@@ -188,8 +163,8 @@ export function validateBackup(value: unknown): BackupValidationResult {
     };
   });
 
-  const todos: BackupTodo[] = todoValues.map((item, index) => {
-    const path = `data.todos[${index}]`;
+  const todoitems: TodoitemBackupItem[] = todoitemValues.map((item, index) => {
+    const path = `data.todoitems[${index}]`;
     if (!isObject(item)) {
       errors.push(`${path} 必须是对象`);
       return { id: 0, title: '', content: '', todo_time: '', done: false };
@@ -206,7 +181,7 @@ export function validateBackup(value: unknown): BackupValidationResult {
   rejectDuplicateKeys(passwords.map((item) => item.note), 'data.passwords', errors);
   rejectDuplicateKeys(bookmarks.map((item) => item.id), 'data.bookmarks', errors);
   rejectDuplicateKeys(notebooks.map((item) => item.id), 'data.notebooks', errors);
-  rejectDuplicateKeys(todos.map((item) => item.id), 'data.todos', errors);
+  rejectDuplicateKeys(todoitems.map((item) => item.id), 'data.todoitems', errors);
 
   if (errors.length > 0) {
     return { ok: false, errors: errors.slice(0, 20) };
@@ -218,7 +193,7 @@ export function validateBackup(value: unknown): BackupValidationResult {
       format: BACKUP_FORMAT,
       version: BACKUP_VERSION,
       exported_at: exportedAt,
-      data: { passwords, bookmarks, notebooks, todos },
+      data: { passwords, bookmarks, notebooks, todoitems },
     },
   };
 }

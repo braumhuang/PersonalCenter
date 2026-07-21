@@ -1,3 +1,5 @@
+import type { Hono } from 'hono';
+
 export interface Env {
   DB: D1Database;
   ASSETS?: Fetcher;
@@ -7,32 +9,4 @@ export interface Env {
   AES_KEY: string;
 }
 
-export interface PasswordModel {
-  note: string;
-  name: string;
-  pswd: string;
-  urls: string;
-  info: string;
-}
-
-export interface BookmarkModel {
-  id: number;
-  name: string;
-  url: string;
-  show: number;
-}
-
-export interface NotebookModel {
-  id: number;
-  title: string;
-  content: string;
-  create_time: string;
-}
-
-export interface TodoitemModel {
-  id: number;
-  title: string;
-  content: string;
-  todo_time: string;
-  done: number;
-}
+export type App = Hono<{ Bindings: Env }>;
